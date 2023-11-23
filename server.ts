@@ -1,23 +1,41 @@
-const server = Bun.serve<{ authToken: string }>({
-  fetch(req, server) {
-    const success = server.upgrade(req);
-    if (success) {
-      // Bun automatically returns a 101 Switching Protocols
-      // if the upgrade succeeds
-      return undefined;
-    }
+type WebSocketData = {
+  createdAt: number;
+  channelId: string;
+  authToken: string;
+};
 
-    // handle HTTP request normally
-    return new Response("Hello world!");
+// TypeScript: specify the type of `data`
+Bun.serve<WebSocketData>({
+  fetch(req, server) {
+    console.log(req.headers)
+    // use a library to parse cookies
+    const cookies = {"X-Token":"asdf"}// parseCookies(req.headers.get("Cookie"));
+    server.upgrade(req, {
+      // this object must conform to WebSocketData
+      data: {
+        createdAt: Date.now(),
+        channelId: new URL(req.url).searchParams.get("channelId"),
+        authToken: cookies["X-Token"],
+      },
+    });
+
+    return undefined;
   },
   websocket: {
-    // this is called when a message is received
+    // handler called when a message is received
     async message(ws, message) {
-      console.log(`Received ${message}`);
-      // send back a message
-      ws.send(`You said: ${message}`);
+      console.log(ws.data)
+      const user = getUserFromToken(ws.data.authToken);
+
+      await saveMessageToDatabase({
+        channel: ws.data.channelId,
+        message: String(message),
+        userId: user.id,
+      });
     },
+    open(ws) {}, // a socket is opened
+    close(ws, code, message) {}, // a socket is closed
+    drain(ws) {}, // the socket is ready to receive more data
   },
 });
 
-console.log(`Listening on ${server.hostname}:${server.port}`);
